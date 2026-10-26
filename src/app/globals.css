@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-app: #0F1117;
+  --bg-surface: #1A1D26;
+  --bg-elevated: #252936;
+  --border-subtle: #2E3445;
+  --text-primary: #F0F3FA;
+  --text-secondary: #9DA4B4;
+  --accent-primary: #6C5CE7;
+  --accent-hover: #5A4BD1;
+
+  --chord-major: #FF5252;
+  --chord-minor: #FF7A00;
+  --chord-dom7: #FFD600;
+  --chord-maj7: #00E676;
+  --chord-min7: #00E5FF;
+  --chord-dim: #2979FF;
+  --chord-aug: #AA00FF;
+  --chord-custom: #EC407A;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0F1117;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2E3445;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6C5CE7;
+}
+
+/* Chord button active glow animation */
+.chord-pad-active {
+  transform: scale(0.95);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.45);
+}
+
+/* Piano key active glow */
+.piano-key-active {
+  box-shadow: 0 0 12px #00E5FF, inset 0 0 8px #00E5FF !important;
+  background-color: #00E5FF !important;
+  color: #0F1117 !important;
+}
+
+/* Guitar string fret node active */
+.fret-marker-active {
+  box-shadow: 0 0 10px #00E5FF;
+  animation: pulse-ring 1.5s infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
