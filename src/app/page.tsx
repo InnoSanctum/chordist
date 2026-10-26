@@ -64,8 +64,20 @@ export default function Home() {
     fetch('/api/songs')
       .then((res) => res.json())
       .then((data) => {
-        if (data.status === 'ok' && Array.isArray(data.songs) && data.songs.length > 0) {
+        if (data.status === 'ok' && Array.isArray(data.songs)) {
           setIsTursoActive(true);
+          if (data.songs.length > 0) {
+            setSongs((prev) => {
+              const songMap = new Map<string, Song>();
+              prev.forEach((s) => songMap.set(s.id, s));
+              data.songs.forEach((s: Song) => songMap.set(s.id, s));
+              const merged = Array.from(songMap.values());
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
         }
       })
       .catch(() => {
@@ -121,7 +133,12 @@ export default function Home() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedSong),
-    }).catch(() => {});
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'ok') setIsTursoActive(true);
+      })
+      .catch(() => {});
   };
 
   // Section actions
@@ -260,7 +277,12 @@ export default function Home() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSong),
-    }).catch(() => {});
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'ok') setIsTursoActive(true);
+      })
+      .catch(() => {});
   };
 
   // Import song from lyrics & chords parser
@@ -274,7 +296,12 @@ export default function Home() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newSong),
-    }).catch(() => {});
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'ok') setIsTursoActive(true);
+      })
+      .catch(() => {});
   };
 
   const handleDuplicateSong = (sourceSong: Song) => {
@@ -286,6 +313,17 @@ export default function Home() {
     const newSongs = [...songs, duplicated];
     saveSongs(newSongs);
     setActiveSongId(duplicated.id);
+
+    fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(duplicated),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === 'ok') setIsTursoActive(true);
+      })
+      .catch(() => {});
   };
 
   const handleDeleteSong = (id: string) => {
@@ -293,6 +331,10 @@ export default function Home() {
     const filtered = songs.filter((s) => s.id !== id);
     saveSongs(filtered);
     setActiveSongId(filtered[0].id);
+
+    fetch(`/api/songs?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }).catch(() => {});
   };
 
   const handleLogout = () => {

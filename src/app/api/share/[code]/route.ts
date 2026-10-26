@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db, isTursoConfigured } from '@/lib/db';
+import { db, isTursoConfigured, ensureSchema } from '@/lib/db';
 import { sharedSongsTable } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
@@ -12,6 +12,8 @@ export async function GET(
   if (!isTursoConfigured()) {
     return NextResponse.json({ error: 'Database not configured' }, { status: 404 });
   }
+
+  await ensureSchema();
 
   try {
     const result = await db
@@ -41,6 +43,8 @@ export async function POST(
   if (!isTursoConfigured()) {
     return NextResponse.json({ status: 'mock_shared', code });
   }
+
+  await ensureSchema();
 
   try {
     const body = await req.json();
