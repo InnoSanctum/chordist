@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from '../components/Header';
 import { SectionSwitcher } from '../components/SectionSwitcher';
 import { ChordGrid } from '../components/ChordGrid';
@@ -11,11 +11,15 @@ import { SongDrawer } from '../components/SongDrawer';
 import { ShareModal } from '../components/ShareModal';
 import { LoginModal, SessionUser } from '../components/LoginModal';
 import { ImportSongModal } from '../components/ImportSongModal';
+import { LyricsPanel, NextChordControls } from '../components/LyricsPanel';
+import { ChordStrip } from '../components/ChordStrip';
+import { parseLyricsSheet } from '../lib/lyricsSheet';
+import { buildImportedChord } from '../lib/chordParser';
 import { INITIAL_SONGS } from '../lib/defaultSongs';
 import { Song, ChordData, SongSection } from '../types';
 import { audioEngine } from '../lib/audioEngine';
 import { getChordColor } from '../lib/theory';
-import { songsCacheKey, ACTIVE_SONG_KEY, PENDING_FORK_KEY } from '../lib/storageKeys';
+import { songsCacheKey, ACTIVE_SONG_KEY, PENDING_FORK_KEY, LYRICS_MODE_KEY } from '../lib/storageKeys';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
@@ -24,6 +28,8 @@ export default function Home() {
   const [songs, setSongs] = useState<Song[]>(INITIAL_SONGS);
   const [activeSongId, setActiveSongId] = useState<string>(INITIAL_SONGS[0].id);
   const [isTursoActive, setIsTursoActive] = useState<boolean>(false);
+  const [isLyricsMode, setIsLyricsMode] = useState(false);
+  const [activeChordIndex, setActiveChordIndex] = useState(-1); // position in the lyrics sheet
 
   // Modals
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -177,6 +183,89 @@ export default function Home() {
     [currentSong]
   );
 
+  // ---- Lyrics / play-along view ----
+  useEffect(() => {
+    try {
+      setIsLyricsMode(localStorage.getItem(LYRICS_MODE_KEY) === '1');
+    } catch {}
+  }, []);
+
+  const toggleLyricsMode = () => {
+    setIsLyricsMode((on) => {
+      try {
+        localStorage.setItem(LYRICS_MODE_KEY, on ? '0' : '1');
+      } catch {}
+      return !on;
+    });
+  };
+
+  useEffect(() => setActiveChordIndex(-1), [currentSong.id]);
+
+  const sheet = useMemo(() => parseLyricsSheet(currentSong.sourceText || ''), [currentSong.sourceText]);
+
+  // Chord names in the text play the song's own pads (so pad edits apply); unknown names are built on the fly
+  const resolveChord = useMemo(() => {
+    const pads = new Map<string, ChordData>();
+    [activeSection, ...currentSong.sections].forEach((sec) =>
+      sec.chords.forEach((c) => {
+        if (c.notes?.length && c.label !== 'Empty' && !pads.has(c.label)) pads.set(c.label, c);
+      })
+    );
+    const built = new Map<string, ChordData>();
+    return (name: string): ChordData => {
+      const pad = pads.get(name);
+      if (pad) return pad;
+      if (!built.has(name)) built.set(name, buildImportedChord(name, `sheet-${name}`));
+      return built.get(name)!;
+    };
+  }, [currentSong.sections, activeSection]);
+
+  const stripChords = useMemo(
+    () =>
+      sheet.uniqueChords.length > 0
+        ? sheet.uniqueChords.map(resolveChord).filter((c) => c.notes.length > 0)
+        : activeSection.chords.filter((c) => c.notes?.length && c.label !== 'Empty'),
+    [sheet, resolveChord, activeSection]
+  );
+
+  const playSheetChord = (index: number) => {
+    const name = sheet.chords[index];
+    if (name === undefined) return;
+    handlePlayChord(resolveChord(name));
+    setActiveChordIndex(index);
+  };
+
+  const stepSheetChord = (delta: 1 | -1) => {
+    const next = activeChordIndex + delta;
+    if (next >= 0 && next < sheet.chords.length) playSheetChord(next);
+  };
+
+  // PC: arrow keys / space step through the song's chords
+  useEffect(() => {
+    if (!isLyricsMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        stepSheetChord(1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        stepSheetChord(-1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // A pad played while following along moves the cursor to that chord's next occurrence
+  const handlePlayAndFollow = (chord: ChordData) => {
+    handlePlayChord(chord);
+    if (!isLyricsMode) return;
+    const next = sheet.chords.indexOf(chord.label, activeChordIndex + 1);
+    if (next !== -1) setActiveChordIndex(next);
+  };
+
   // Update current song fields
   const handleUpdateCurrentSong = (fields: Partial<Song>) => {
     const updated = songs.map((s) => (s.id === currentSong.id ? { ...s, ...fields } : s));
@@ -245,6 +334,31 @@ export default function Home() {
     );
 
     handleUpdateCurrentSong({ sections: updatedSections });
+  };
+
+  const handleAddPad = () => {
+    const newPad: ChordData = {
+      id: `pad-${Date.now()}`,
+      label: 'Empty',
+      notes: [],
+      root: 'C',
+      chordType: 'Empty',
+      colorToken: getChordColor('Empty'),
+      baseOctave: 4,
+    };
+    const updatedSections = currentSong.sections.map((sec) =>
+      sec.id === activeSection.id ? { ...sec, chords: [...sec.chords, newPad] } : sec
+    );
+    handleUpdateCurrentSong({ sections: updatedSections });
+    setEditingChordState({ chord: newPad, index: activeSection.chords.length });
+  };
+
+  const handleRemovePad = (index: number) => {
+    const updatedSections = currentSong.sections.map((sec) =>
+      sec.id === activeSection.id ? { ...sec, chords: sec.chords.filter((_, i) => i !== index) } : sec
+    );
+    handleUpdateCurrentSong({ sections: updatedSections });
+    setEditingChordState(null);
   };
 
   // Import progression from chord library
@@ -396,7 +510,11 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg-app select-none">
+    <div
+      className={`flex flex-col bg-bg-app select-none ${
+        isLyricsMode ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+      }`}
+    >
       {/* Top App Bar */}
       <Header
         song={currentSong}
@@ -405,27 +523,70 @@ export default function Home() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
         onShare={() => setIsShareOpen(true)}
+        isLyricsMode={isLyricsMode}
+        onToggleLyrics={toggleLyricsMode}
       />
 
-      {/* Section Switcher Tabs */}
-      <SectionSwitcher
-        sections={currentSong.sections}
-        activeSectionId={currentSong.activeSectionId}
-        onSelectSection={handleSelectSection}
-        onAddSection={handleAddSection}
-        onRenameSection={handleRenameSection}
-        onDeleteSection={handleDeleteSection}
-      />
-
-      {/* Main Chord Pad Grid (12 or 15 buttons) */}
-      <main className="flex-1 flex flex-col justify-center items-center py-2 sm:py-4">
-        <ChordGrid
-          chords={activeSection.chords}
-          padCount={currentSong.padCount}
-          onPlayChord={handlePlayChord}
-          onEditChord={handleEditChord}
+      {/* Section Switcher Tabs (phones in lyrics mode use the chord strip instead) */}
+      <div className={isLyricsMode ? 'hidden md:block' : ''}>
+        <SectionSwitcher
+          sections={currentSong.sections}
+          activeSectionId={currentSong.activeSectionId}
+          onSelectSection={handleSelectSection}
+          onAddSection={handleAddSection}
+          onRenameSection={handleRenameSection}
+          onDeleteSection={handleDeleteSection}
         />
-      </main>
+      </div>
+
+      {isLyricsMode ? (
+        // Phones: lyrics + chord strip. Tablets / PC: lyrics beside the pad grid.
+        <main className="flex-1 min-h-0 flex flex-col md:flex-row">
+          <LyricsPanel
+            className="flex-1 md:w-1/2 md:flex-none md:border-r md:border-border-subtle"
+            sheet={sheet}
+            sourceText={currentSong.sourceText || ''}
+            activeIndex={activeChordIndex}
+            chordColor={(name) => resolveChord(name).colorToken || getChordColor(name)}
+            onTapChord={playSheetChord}
+            onStep={stepSheetChord}
+            onSaveText={(text) => {
+              setActiveChordIndex(-1);
+              handleUpdateCurrentSong({ sourceText: text });
+            }}
+          />
+          <div className="hidden md:block md:w-1/2 overflow-y-auto">
+            <ChordGrid
+              chords={activeSection.chords}
+              padCount={currentSong.padCount}
+              compact
+              onPlayChord={handlePlayAndFollow}
+              onEditChord={handleEditChord}
+              onAddPad={handleAddPad}
+            />
+          </div>
+          <ChordStrip
+            className="md:hidden"
+            chords={stripChords}
+            onPlay={handlePlayAndFollow}
+            leading={
+              sheet.chords.length > 0 && (
+                <NextChordControls sheet={sheet} activeIndex={activeChordIndex} onStep={stepSheetChord} />
+              )
+            }
+          />
+        </main>
+      ) : (
+        <main className="flex-1 flex flex-col justify-center items-center py-2 sm:py-4">
+          <ChordGrid
+            chords={activeSection.chords}
+            padCount={currentSong.padCount}
+            onPlayChord={handlePlayChord}
+            onEditChord={handleEditChord}
+            onAddPad={handleAddPad}
+          />
+        </main>
+      )}
 
       {/* Modals & Dialogs */}
       {editingChordState && (
@@ -442,6 +603,9 @@ export default function Home() {
           onOpenLibraryForPad={() => {
             setIsLibraryOpen(true);
           }}
+          onRemovePad={
+            activeSection.chords.length > currentSong.padCount ? handleRemovePad : undefined
+          }
         />
       )}
 
@@ -457,7 +621,7 @@ export default function Home() {
         playbackStyle={currentSong.playbackStyle}
         strumSpeedMs={currentSong.strumSpeedMs}
         fadeDuration={currentSong.fadeDuration}
-        padCount={currentSong.padCount}
+        padCount={Math.max(currentSong.padCount, activeSection.chords.length)}
         targetPadIndex={editingChordState?.index}
         onClose={() => setIsLibraryOpen(false)}
         onImportProgression={handleImportProgression}

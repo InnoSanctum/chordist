@@ -85,6 +85,12 @@ export async function ensureSchema(): Promise<void> {
       );
     `);
 
+    // Columns added after the songs table first shipped
+    const songColumns = (await client.execute(`PRAGMA table_info(songs)`)).rows.map((r) => r.name);
+    if (!songColumns.includes('source_text')) {
+      await client.execute(`ALTER TABLE songs ADD COLUMN source_text TEXT`);
+    }
+
     await client.execute(`CREATE INDEX IF NOT EXISTS idx_songs_creator ON songs (creator_id);`);
     await client.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);`);
 

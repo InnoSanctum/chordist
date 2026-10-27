@@ -15,6 +15,7 @@ export const songsTable = sqliteTable('songs', {
   isPublic: integer('is_public', { mode: 'boolean' }).default(false),
   shareCode: text('share_code'),
   sectionsJson: text('sections_json').notNull(), // JSON stringified sections & chords
+  sourceText: text('source_text'), // raw chord sheet pasted on import, kept for re-parsing / lyrics
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });

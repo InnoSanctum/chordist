@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { Plus } from 'lucide-react';
 import { ChordPad } from './ChordPad';
 import { ChordData } from '../types';
 
@@ -9,6 +10,8 @@ interface ChordGridProps {
   padCount: 12 | 15;
   onPlayChord: (chord: ChordData) => void;
   onEditChord: (chord: ChordData, index: number) => void;
+  onAddPad?: () => void;
+  compact?: boolean; // narrower column layout for the lyrics split view
 }
 
 const DESKTOP_HOTKEYS = [
@@ -22,6 +25,8 @@ export const ChordGrid: React.FC<ChordGridProps> = ({
   padCount,
   onPlayChord,
   onEditChord,
+  onAddPad,
+  compact = false,
 }) => {
   // Listen for physical keyboard hotkeys on PC/Desktop
   useEffect(() => {
@@ -49,14 +54,16 @@ export const ChordGrid: React.FC<ChordGridProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [chords, onPlayChord]);
 
-  // Display either 12 or 15 pads
-  const displayedChords = chords.slice(0, padCount);
+  // padCount (12 or 15) sets the grid shape and the minimum pad count; sections can hold more (page scrolls)
+  const displayedChords = chords;
 
   return (
     <div className="w-full max-w-5xl mx-auto p-3 sm:p-4 md:p-6 select-none">
       <div
         className={`grid gap-2.5 sm:gap-3.5 md:gap-4 ${
-          padCount === 12
+          compact
+            ? 'grid-cols-3 xl:grid-cols-4'
+            : padCount === 12
             ? 'grid-cols-3 md:grid-cols-4'
             : 'grid-cols-3 md:grid-cols-5'
         }`}
@@ -71,6 +78,17 @@ export const ChordGrid: React.FC<ChordGridProps> = ({
             onEdit={onEditChord}
           />
         ))}
+
+        {onAddPad && (
+          <button
+            onClick={onAddPad}
+            title="Add a pad to this section"
+            className="aspect-square w-full rounded-2xl border border-dashed border-border-subtle text-text-secondary hover:text-accent-primary hover:border-accent-primary/60 flex flex-col items-center justify-center gap-1 transition-colors"
+          >
+            <Plus className="w-6 h-6" />
+            <span className="text-[11px] font-semibold">Add Pad</span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -81,6 +81,7 @@ export const ImportSongModal: React.FC<ImportSongModalProps> = ({
       fadeDuration: 2.5,
       sections: parsed.sections,
       activeSectionId: parsed.sections[0].id,
+      sourceText: rawText,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

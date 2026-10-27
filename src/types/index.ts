@@ -32,6 +32,7 @@ export interface Song {
   fadeDuration: number; // 0.5s - 6.0s
   sections: SongSection[];
   activeSectionId: string;
+  sourceText?: string; // raw chord sheet / lyrics the song was imported from
   isPublic?: boolean;
   shareCode?: string;
   createdAt?: string;

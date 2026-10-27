@@ -41,6 +41,7 @@ interface ChordEditorModalProps {
   onClose: () => void;
   onSave: (updatedChord: ChordData, index: number) => void;
   onOpenLibraryForPad?: () => void;
+  onRemovePad?: (index: number) => void; // only passed for pads beyond the base 12/15 grid
 }
 
 export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
@@ -54,6 +55,7 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
   onClose,
   onSave,
   onOpenLibraryForPad,
+  onRemovePad,
 }) => {
   const [label, setLabel] = useState(chord.label);
   const [notes, setNotes] = useState<string[]>(chord.notes || []);
@@ -636,6 +638,15 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
             <Play className="w-4 h-4 fill-current" />
             <span>Preview Chord</span>
           </button>
+          {onRemovePad && (
+            <button
+              onClick={() => onRemovePad(index)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/15 text-xs font-bold transition-all active:scale-95"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Remove Pad</span>
+            </button>
+          )}
         </div>
 
         <button

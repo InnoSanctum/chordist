@@ -21,6 +21,7 @@ function toSongRow(song: any, creatorId: string, now: string) {
     strumSpeedMs: song.strumSpeedMs ?? 25,
     fadeDuration: song.fadeDuration || 2.5,
     sectionsJson: JSON.stringify(song.sections || []),
+    sourceText: typeof song.sourceText === 'string' ? song.sourceText : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -93,7 +94,11 @@ export async function POST(req: Request) {
     await db
       .insert(songsTable)
       .values({ id, creatorId, createdAt, ...updatable })
-      .onConflictDoUpdate({ target: songsTable.id, set: updatable });
+      .onConflictDoUpdate({
+        target: songsTable.id,
+        // Never wipe the original import text just because a client didn't send it back
+        set: updatable.sourceText === null ? { ...updatable, sourceText: undefined } : updatable,
+      });
 
     return NextResponse.json({ status: 'ok', id });
   } catch (error) {

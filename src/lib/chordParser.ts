@@ -17,7 +17,7 @@ const CHORD_REGEX = /\b([A-G][b#]?(?:m|min|maj|dim|aug|sus|add|M)?(?:[0-9]{1,2})
 const BRACKET_CHORD_REGEX = /\[([A-G][b#]?[^\]]*)\]/g;
 
 // Section header regex e.g. [Verse 1], Verse:, [Chorus], Chorus 2:, [Bridge], Intro:
-const SECTION_REGEX = /^(?:\[|\b)(intro|verse|chorus|bridge|outro|solo|pre-chorus|hook|interlude)(?:\s*\d*|\b)(?:\]|:)?/i;
+export const SECTION_REGEX = /^(?:\[|\b)(intro|verse|chorus|bridge|outro|solo|pre-chorus|hook|interlude)(?:\s*\d*|\b)(?:\]|:)?/i;
 
 export interface ParsedSongResult {
   title: string;
@@ -27,10 +27,17 @@ export interface ParsedSongResult {
   allUniqueChords: string[];
 }
 
+const CHORD_TOKEN_REGEX = /^([A-G][b#]?(?:m|min|maj|dim|aug|sus|add|M)?(?:[0-9]{1,2})?(?:[b#][0-9])?(?:sus[24]?)?(?:alt)?(?:\/[A-G][b#]?)?)$/;
+
+/** True if a single whitespace-free token is a chord name, e.g. "Dm/C", "F#m7b5" */
+export function isChordToken(token: string): boolean {
+  return CHORD_TOKEN_REGEX.test(token);
+}
+
 /**
  * Checks if a text line is predominantly chords (rather than lyrics)
  */
-function isChordLine(line: string): boolean {
+export function isChordLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
 
@@ -55,8 +62,7 @@ function isChordLine(line: string): boolean {
     }
 
     // Test with chord regex
-    const matches = cleanToken.match(/^([A-G][b#]?(?:m|min|maj|dim|aug|sus|add|M)?(?:[0-9]{1,2})?(?:[b#][0-9])?(?:sus[24]?)?(?:alt)?(?:\/[A-G][b#]?)?)$/);
-    if (matches) {
+    if (isChordToken(cleanToken)) {
       chordCount++;
     }
   }
@@ -204,14 +210,7 @@ export function parseSongText(rawText: string, defaultPadCount: 12 | 15 = 15): P
   const allChords = uniqueInOrder(sectionChordsMap.flatMap((sec) => sec.chords));
 
   const tabs: { name: string; chords: string[] }[] = [];
-  const addTabs = (name: string, chords: string[]) => {
-    for (let start = 0, part = 1; start < chords.length; start += defaultPadCount, part++) {
-      tabs.push({
-        name: part === 1 ? name : `${name} (${part})`,
-        chords: chords.slice(start, start + defaultPadCount),
-      });
-    }
-  };
+  const addTabs = (name: string, chords: string[]) => tabs.push({ name, chords });
 
   addTabs('All Chords', allChords);
   if (sectionChordsMap.length > 1) {
@@ -229,7 +228,7 @@ export function parseSongText(rawText: string, defaultPadCount: 12 | 15 = 15): P
   const finalSections: SongSection[] = tabs.map((tab, secIdx) => ({
     id: `sec-imported-${secIdx}-${stamp}`,
     name: tab.name,
-    chords: Array.from({ length: defaultPadCount }, (_, pIdx) =>
+    chords: Array.from({ length: Math.max(defaultPadCount, tab.chords.length) }, (_, pIdx) =>
       buildImportedChord(tab.chords[pIdx], `import-${secIdx}-${pIdx}-${stamp}`)
     ),
   }));
