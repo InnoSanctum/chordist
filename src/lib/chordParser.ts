@@ -1,6 +1,6 @@
 // Comprehensive Chords & Lyrics Parser
 import { ChordData, SongSection } from '../types';
-import { getChordColor } from './theory';
+import { getChordColor, parseAndBuildChord, noteToMidi } from './theory';
 import { getVoicingForChord, fretsToNotes } from './guitarVoicings';
 
 // Common English words that could look like chord letters
@@ -63,6 +63,45 @@ function isChordLine(line: string): boolean {
 
   // If more than 50% of tokens are valid chords, it's a chord line
   return chordCount / tokens.length >= 0.5;
+}
+
+/**
+ * Turns a chord name into a pad: a real guitar shape when one covers every chord tone,
+ * otherwise the theoretical voicing. Unknown names / missing slots become silent empty pads.
+ */
+export function buildImportedChord(label: string | undefined, id: string): ChordData {
+  const built = label ? parseAndBuildChord(label, 3) : null;
+  if (!label || !built) {
+    return {
+      id,
+      label: label || 'Empty',
+      notes: [],
+      root: 'C',
+      chordType: 'Empty',
+      colorToken: getChordColor('Empty'),
+      baseOctave: 3,
+    };
+  }
+
+  const pcs = (notes: string[]) => new Set(notes.map((n) => noteToMidi(n) % 12));
+  const frets = getVoicingForChord(label, built.notes);
+  const fretNotes = fretsToNotes(frets);
+  const wanted = pcs(built.notes);
+  const got = pcs(fretNotes);
+  // Guitar shapes routinely drop the perfect 5th of 4+ note chords (e.g. open C7)
+  if (wanted.size >= 4) wanted.delete((noteToMidi(`${built.root}3`) + 7) % 12);
+  const coversChord = fretNotes.length >= 3 && Array.from(wanted).every((pc) => got.has(pc));
+
+  return {
+    id,
+    label,
+    notes: coversChord ? fretNotes : built.notes,
+    root: built.root,
+    chordType: built.chordType,
+    colorToken: getChordColor(label),
+    baseOctave: 3,
+    guitarFrets: coversChord ? frets : undefined,
+  };
 }
 
 /**
@@ -159,41 +198,41 @@ export function parseSongText(rawText: string, defaultPadCount: 12 | 15 = 15): P
     });
   }
 
-  // Convert string names into ChordData objects
-  const finalSections: SongSection[] = sectionChordsMap.map((sec, secIdx) => {
-    // Deduplicate consecutive identical chords while preserving progression
-    const filteredChords: string[] = [];
-    for (const c of sec.chords) {
-      if (filteredChords.length === 0 || filteredChords[filteredChords.length - 1] !== c) {
-        filteredChords.push(c);
-      }
-    }
+  // Pads are a palette of the chords to play, not a timeline: one pad per unique chord.
+  // First tab holds every chord in the song; then one tab per distinct song part.
+  const uniqueInOrder = (chords: string[]) => Array.from(new Set(chords));
+  const allChords = uniqueInOrder(sectionChordsMap.flatMap((sec) => sec.chords));
 
-    // Pad to defaultPadCount (12 or 15) so the grid is full and ready
-    const pads: ChordData[] = [];
-    for (let pIdx = 0; pIdx < defaultPadCount; pIdx++) {
-      const chordLabel = filteredChords[pIdx] || 'Empty';
-      const frets = chordLabel !== 'Empty' ? getVoicingForChord(chordLabel, []) : [null, null, null, null, null, null];
-      const notes = chordLabel !== 'Empty' ? fretsToNotes(frets) : ['C4'];
-
-      pads.push({
-        id: `import-${secIdx}-${pIdx}-${Date.now()}`,
-        label: chordLabel,
-        notes: notes.length > 0 ? notes : ['C4'],
-        root: chordLabel !== 'Empty' ? chordLabel.replace(/[^A-G#b]/g, '') : 'C',
-        chordType: 'Major',
-        colorToken: getChordColor(chordLabel),
-        baseOctave: 4,
-        guitarFrets: frets,
+  const tabs: { name: string; chords: string[] }[] = [];
+  const addTabs = (name: string, chords: string[]) => {
+    for (let start = 0, part = 1; start < chords.length; start += defaultPadCount, part++) {
+      tabs.push({
+        name: part === 1 ? name : `${name} (${part})`,
+        chords: chords.slice(start, start + defaultPadCount),
       });
     }
+  };
 
-    return {
-      id: `sec-imported-${secIdx}-${Date.now()}`,
-      name: sec.name,
-      chords: pads,
-    };
-  });
+  addTabs('All Chords', allChords);
+  if (sectionChordsMap.length > 1) {
+    const seen = new Set<string>([allChords.join(' ')]);
+    for (const sec of sectionChordsMap) {
+      const chords = uniqueInOrder(sec.chords);
+      const key = chords.join(' ');
+      if (seen.has(key)) continue; // repeated chorus, verse identical to an earlier one, etc.
+      seen.add(key);
+      addTabs(sec.name, chords);
+    }
+  }
+
+  const stamp = Date.now();
+  const finalSections: SongSection[] = tabs.map((tab, secIdx) => ({
+    id: `sec-imported-${secIdx}-${stamp}`,
+    name: tab.name,
+    chords: Array.from({ length: defaultPadCount }, (_, pIdx) =>
+      buildImportedChord(tab.chords[pIdx], `import-${secIdx}-${pIdx}-${stamp}`)
+    ),
+  }));
 
   const totalChordsFound = sectionChordsMap.reduce((acc, s) => acc + s.chords.length, 0);
 

@@ -24,13 +24,15 @@ export const ChordPad: React.FC<ChordPadProps> = ({
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const padColor = chord.colorToken || getChordColor(chord.label);
+  // Placeholder pad: older songs stored these as label "Empty" with a dummy C4 note
+  const isEmpty = !chord.notes?.length || chord.label === 'Empty';
 
   const handlePointerDown = (e: React.PointerEvent) => {
     // Only primary button
     if (e.button !== 0) return;
 
     setIsPressed(true);
-    onPlay(chord);
+    if (!isEmpty) onPlay(chord);
 
     // Setup long press (450ms) to trigger edit
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -69,11 +71,17 @@ export const ChordPad: React.FC<ChordPadProps> = ({
         e.preventDefault();
         onEdit(chord, index);
       }}
-      style={{
-        backgroundColor: padColor,
-        backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(0,0,0,0.35) 100%)',
-      }}
-      className={`relative aspect-square w-full rounded-2xl p-2.5 md:p-3 flex flex-col justify-between items-center text-center cursor-pointer shadow-lg transition-transform duration-75 select-none border border-white/10 ${
+      style={
+        isEmpty
+          ? undefined
+          : {
+              backgroundColor: padColor,
+              backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(0,0,0,0.35) 100%)',
+            }
+      }
+      className={`relative aspect-square w-full rounded-2xl p-2.5 md:p-3 flex flex-col justify-between items-center text-center cursor-pointer transition-transform duration-75 select-none border ${
+        isEmpty ? 'bg-bg-surface/40 border-dashed border-border-subtle opacity-60' : 'shadow-lg border-white/10'
+      } ${
         isPressed
           ? 'scale-95 shadow-[0_0_20px_rgba(255,255,255,0.6)] brightness-110'
           : 'hover:brightness-105 active:scale-95'
@@ -103,15 +111,21 @@ export const ChordPad: React.FC<ChordPadProps> = ({
 
       {/* Center: Main Chord Label */}
       <div className="my-auto flex flex-col items-center">
-        <span className="font-mono text-xl sm:text-2xl md:text-3xl font-extrabold text-white tracking-tight drop-shadow-md">
-          {chord.label || 'Empty'}
+        <span
+          className={`font-mono font-extrabold tracking-tight ${
+            isEmpty
+              ? 'text-sm sm:text-base text-text-secondary'
+              : 'text-xl sm:text-2xl md:text-3xl text-white drop-shadow-md'
+          }`}
+        >
+          {isEmpty ? 'Empty' : chord.label}
         </span>
       </div>
 
       {/* Bottom: Note List Subtitle */}
       <div className="w-full truncate">
         <span className="text-[10px] sm:text-[11px] md:text-xs font-mono font-medium text-white/85 tracking-wider drop-shadow">
-          ({noteListDisplay})
+          {isEmpty ? ' ' : `(${noteListDisplay})`}
         </span>
       </div>
     </div>

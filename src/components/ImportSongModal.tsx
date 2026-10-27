@@ -33,6 +33,13 @@ Let it be, let it be
 G                F     C
 Whisper words of wisdom, let it be`;
 
+// Rough guess: songs usually start on the tonic chord
+function guessKeySignature(firstChord?: string): string {
+  const m = firstChord?.match(/^([A-G][#b]?)(m(?!aj))?/);
+  if (!m) return 'C Major';
+  return `${m[1]} ${m[2] ? 'Minor' : 'Major'}`;
+}
+
 export const ImportSongModal: React.FC<ImportSongModalProps> = ({
   isOpen,
   onClose,
@@ -66,7 +73,7 @@ export const ImportSongModal: React.FC<ImportSongModalProps> = ({
       title,
       artist,
       bpm: 110,
-      keySignature: parsed.allUniqueChords[0] ? `${parsed.allUniqueChords[0]} Major` : 'C Major',
+      keySignature: guessKeySignature(parsed.allUniqueChords[0]),
       instrument,
       padCount,
       playbackStyle: instrument === 'acoustic_guitar' ? 'strum_down' : 'block',

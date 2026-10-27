@@ -164,7 +164,7 @@ export default function Home() {
   // Play a chord
   const handlePlayChord = useCallback(
     (chord: ChordData) => {
-      if (!chord.notes || chord.notes.length === 0) return;
+      if (!chord.notes || chord.notes.length === 0 || chord.label === 'Empty') return;
       if (audioEngine) {
         audioEngine.playChord(chord.notes, {
           instrument: currentSong.instrument,

@@ -113,6 +113,36 @@ export const STANDARD_GUITAR_VOICINGS: Record<string, (number | null)[]> = {
   'Esus4': [0, 0, 2, 2, 2, 0],
 };
 
+const pitchClass = (midi: number) => ((midi % 12) + 12) % 12;
+
+/**
+ * Re-voices a chord shape so the given bass note is the lowest sounding string,
+ * using low E or A within the first 5 frets (e.g. Dm + C -> x32231, C + G -> 332010).
+ */
+function applySlashBass(frets: (number | null)[], bass: string): (number | null)[] {
+  const bassPc = pitchClass(noteToMidi(`${bass}3`));
+  const result = [...frets];
+
+  // Already the lowest sounding note?
+  for (let sIdx = 5; sIdx >= 0; sIdx--) {
+    const fret = result[sIdx];
+    if (fret === null || fret === undefined) continue;
+    if (pitchClass(getGuitarFretNote(sIdx, fret).midi) === bassPc) return result;
+    break;
+  }
+
+  for (const sIdx of [5, 4]) {
+    for (let fret = 0; fret <= 5; fret++) {
+      if (pitchClass(getGuitarFretNote(sIdx, fret).midi) === bassPc) {
+        result[sIdx] = fret;
+        if (sIdx === 4) result[5] = null;
+        return result;
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Finds or derives a 6-string guitar voicing for a chord.
  * Guarantees at most ONE note per string (no duplicate dots on same string).
@@ -125,40 +155,34 @@ export function getVoicingForChord(chordLabel: string, chordNotes: string[]): (n
     return [...STANDARD_GUITAR_VOICINGS[cleanLabel]];
   }
 
-  // 2. Lookup without slash bass (e.g. "C/E" -> "C")
-  const rootPart = cleanLabel.split('/')[0];
+  // 2. Slash chords: standard shape of the upper chord with the bass moved underneath (e.g. "Dm/C")
+  const [rootPart, bass] = cleanLabel.split('/');
   if (STANDARD_GUITAR_VOICINGS[rootPart]) {
-    return [...STANDARD_GUITAR_VOICINGS[rootPart]];
+    const shape = [...STANDARD_GUITAR_VOICINGS[rootPart]];
+    return bass ? applySlashBass(shape, bass) : shape;
   }
 
-  // 3. Fallback: Intelligent solver that assigns notes to unique strings (at most 1 per string)
+  // 3. Fallback: Intelligent solver that assigns chord tones to unique strings (at most 1 per string)
   if (!chordNotes || chordNotes.length === 0) {
     return [null, null, null, null, null, null];
   }
 
   const result: (number | null)[] = [null, null, null, null, null, null];
-  const targetMidis = chordNotes.map(noteToMidi);
+  const targetPcs = chordNotes.map((n) => pitchClass(noteToMidi(n)));
+  const lowestPc = targetPcs[0];
+  let bassFound = false;
 
-  // For each string (from Low E up to High e), find if one of target MIDI notes falls on frets 0-5
+  // From Low E up to High e, take the lowest fret (0-5) that plays any chord tone;
+  // strings below the chord's lowest note stay muted so the bass is correct
   for (let sIdx = 5; sIdx >= 0; sIdx--) {
-    let matchedFret: number | null = null;
-
-    // Check open string first
-    const openInfo = getGuitarFretNote(sIdx, 0);
-    if (targetMidis.includes(openInfo.midi)) {
-      matchedFret = 0;
-    } else {
-      // Check frets 1 to 5 (standard open chord box)
-      for (let fret = 1; fret <= 5; fret++) {
-        const info = getGuitarFretNote(sIdx, fret);
-        if (targetMidis.includes(info.midi)) {
-          matchedFret = fret;
-          break;
-        }
+    for (let fret = 0; fret <= 5; fret++) {
+      const pc = pitchClass(getGuitarFretNote(sIdx, fret).midi);
+      if (bassFound ? targetPcs.includes(pc) : pc === lowestPc) {
+        result[sIdx] = fret;
+        bassFound = true;
+        break;
       }
     }
-
-    result[sIdx] = matchedFret;
   }
 
   return result;
