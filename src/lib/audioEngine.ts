@@ -141,7 +141,8 @@ class SoundEngine {
 
   /**
    * Generates or fetches a cached Karplus-Strong plucked acoustic guitar buffer
-   * Pre-calculated into an AudioBuffer: 100% stable, natural physics, no feedback loops or screeching.
+   * Pre-calculated into an AudioBuffer with pick-position comb filtering,
+   * smoothed excitation, and wood body bloom.
    */
   private getGuitarBuffer(freq: number, midi: number): AudioBuffer {
     if (this.guitarBufferCache.has(midi) && this.ctx) {
@@ -150,26 +151,43 @@ class SoundEngine {
 
     const sampleRate = this.ctx ? this.ctx.sampleRate : 44100;
     const period = Math.max(2, Math.round(sampleRate / freq));
-    // 3.5 seconds buffer is plenty for full acoustic decay
     const bufferDuration = 3.5;
     const bufferLength = Math.floor(sampleRate * bufferDuration);
     const buffer = this.ctx!.createBuffer(1, bufferLength, sampleRate);
     const data = buffer.getChannelData(0);
 
-    // Initial pluck transient (pick excitation)
+    // 1. Warm excitation buffer (finger/pick pluck rather than sharp metallic noise)
+    const noise = new Float32Array(period);
     for (let i = 0; i < period; i++) {
-      const window = Math.sin((i / period) * Math.PI);
-      data[i] = (Math.random() * 2 - 1) * window * 0.85;
+      noise[i] = Math.random() * 2 - 1;
+    }
+    // Lowpass filter the noise burst twice to remove harsh clicks (emulates soft finger/plectrum contact)
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < period; i++) {
+        noise[i] = 0.5 * (noise[i] + noise[i - 1]);
+      }
     }
 
-    // Karplus-Strong string algorithm: low-pass moving average filter with acoustic string tension loss
-    // Low bass strings sustain longer (0.996), high treble strings decay faster (0.992)
-    const loss = Math.min(0.996, Math.max(0.988, 1 - 0.0025 * Math.log2(Math.max(60, freq) / 80)));
+    // Comb filter for pick position (~18% from bridge)
+    const pickOffset = Math.max(1, Math.round(period * 0.18));
+
+    for (let i = 0; i < period; i++) {
+      const window = Math.sin((i / period) * Math.PI);
+      const pickComponent = i >= pickOffset ? noise[i - pickOffset] * 0.5 : 0;
+      // Combine smoothed noise with soft sine fundamental for rich wooden body
+      const fundamental = Math.sin((i / period) * 2 * Math.PI) * 0.45;
+      data[i] = (noise[i] - pickComponent + fundamental) * window * 0.85;
+    }
+
+    // 2. Karplus-Strong string algorithm with dynamic damping
+    // Lower strings sustain longer with rich resonance, high strings decay naturally
+    const loss = Math.min(0.997, Math.max(0.986, 1 - 0.0022 * Math.log2(Math.max(60, freq) / 75)));
+    const S = 0.52; // gentle lowpass filter coefficient
 
     for (let i = period; i < bufferLength; i++) {
       const prev1 = data[i - period];
       const prev2 = i - period - 1 >= 0 ? data[i - period - 1] : 0;
-      data[i] = 0.5 * (prev1 + prev2) * loss;
+      data[i] = (S * prev1 + (1 - S) * prev2) * loss;
     }
 
     this.guitarBufferCache.set(midi, buffer);
@@ -178,7 +196,7 @@ class SoundEngine {
 
   /**
    * High-quality Clean Acoustic Guitar:
-   * Plucked string AudioBuffer + acoustic guitar body warmth filter + stereo spread
+   * Plucked string AudioBuffer + acoustic dreadnought soundhole & wood soundboard resonances + stereo spread
    */
   private playAcousticGuitar(freq: number, midi: number, startTime: number, duration: number) {
     if (!this.ctx || !this.masterGain) return;
@@ -187,32 +205,49 @@ class SoundEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
 
-    // Body Warmth Filter: subtle peak at 200Hz for acoustic soundboard fullness, and lowpass cutoff at 5500Hz to eliminate digital harshness
-    const bodyFilter = this.ctx.createBiquadFilter();
-    bodyFilter.type = 'peaking';
-    bodyFilter.frequency.setValueAtTime(200, startTime);
-    bodyFilter.Q.setValueAtTime(1.8, startTime);
-    bodyFilter.gain.setValueAtTime(3.0, startTime);
+    // Acoustic Body Resonance Filter 1: Deep soundhole air cavity (Helmholtz resonance ~105Hz)
+    const airResonance = this.ctx.createBiquadFilter();
+    airResonance.type = 'peaking';
+    airResonance.frequency.setValueAtTime(105, startTime);
+    airResonance.Q.setValueAtTime(2.2, startTime);
+    airResonance.gain.setValueAtTime(5.5, startTime);
 
+    // Acoustic Body Resonance Filter 2: Solid spruce/cedar soundboard plate (~215Hz)
+    const woodPlate = this.ctx.createBiquadFilter();
+    woodPlate.type = 'peaking';
+    woodPlate.frequency.setValueAtTime(215, startTime);
+    woodPlate.Q.setValueAtTime(2.0, startTime);
+    woodPlate.gain.setValueAtTime(4.0, startTime);
+
+    // Warm Lowpass: acoustic dreadnought top wood naturally attenuates above 3400Hz (eliminates banjo fizz)
     const warmCutoff = this.ctx.createBiquadFilter();
     warmCutoff.type = 'lowpass';
-    warmCutoff.frequency.setValueAtTime(5200, startTime);
+    warmCutoff.frequency.setValueAtTime(3400, startTime);
+
+    // High shelf warmth dip: softens brittle digital transients
+    const highShelf = this.ctx.createBiquadFilter();
+    highShelf.type = 'highshelf';
+    highShelf.frequency.setValueAtTime(2800, startTime);
+    highShelf.gain.setValueAtTime(-3.5, startTime);
 
     // Volume Envelope
     const noteGain = this.ctx.createGain();
-    noteGain.gain.setValueAtTime(0.75, startTime);
+    noteGain.gain.setValueAtTime(0.85, startTime);
     // Smooth exponential fade-out
     noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     // Stereo panning based on string pitch (low notes left, high notes right)
     const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
     if (panner) {
-      const panVal = Math.max(-0.5, Math.min(0.5, (midi - 52) / 28));
+      const panVal = Math.max(-0.4, Math.min(0.4, (midi - 52) / 32));
       panner.pan.setValueAtTime(panVal, startTime);
     }
 
-    source.connect(bodyFilter);
-    bodyFilter.connect(warmCutoff);
+    // Chain: source -> airResonance -> woodPlate -> highShelf -> warmCutoff -> noteGain -> panner -> master
+    source.connect(airResonance);
+    airResonance.connect(woodPlate);
+    woodPlate.connect(highShelf);
+    highShelf.connect(warmCutoff);
     warmCutoff.connect(noteGain);
 
     if (panner) {
@@ -228,7 +263,9 @@ class SoundEngine {
     setTimeout(() => {
       try {
         source.disconnect();
-        bodyFilter.disconnect();
+        airResonance.disconnect();
+        woodPlate.disconnect();
+        highShelf.disconnect();
         warmCutoff.disconnect();
         noteGain.disconnect();
         if (panner) panner.disconnect();

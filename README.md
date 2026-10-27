@@ -56,6 +56,7 @@ Create a free database at [turso.tech](https://turso.tech) and add your credenti
 ```env
 TURSO_URL="libsql://your-database-name.turso.io"
 TURSO_TOKEN="your-turso-auth-token"
+ADMIN_EMAIL="you@example.com"   # this account inherits songs created before user accounts existed
 ```
 
 ### 3. Initialize & Seed Database Schema
@@ -79,5 +80,17 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 3. In Vercel Project Settings → **Environment Variables**, add:
    - `TURSO_URL`
    - `TURSO_TOKEN`
+   - `ADMIN_EMAIL`
 4. Click **Deploy**!
+
+---
+
+## 👤 Accounts
+
+- Anyone can create an account with email + password (no email confirmation). Each user sees only their own songs; new accounts start with the two starter songs.
+- Sessions last a year, so an installed PWA stays logged in.
+- Forgotten password (there's no email recovery):
+  ```bash
+  node --env-file=.env scripts/reset-password.mjs friend@example.com NewPassword123
+  ```
 

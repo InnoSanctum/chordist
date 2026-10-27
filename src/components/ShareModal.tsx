@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Share2, Globe, HeartHandshake } from 'lucide-react';
 import { Song } from '../types';
 
@@ -13,11 +13,21 @@ interface ShareModalProps {
 export const ShareModal: React.FC<ShareModalProps> = ({ song, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
 
+  // Publish a snapshot of the song so friends can open the link on their own devices
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`/api/share/${encodeURIComponent(song.id)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(song),
+    }).catch(() => {});
+  }, [isOpen, song]);
+
   if (!isOpen) return null;
 
   // Generate share URL (using song ID or encoded JSON / shareCode)
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const shareCode = song.shareCode || song.id;
+  const shareCode = song.id;
   const shareUrl = `${origin}/s/${shareCode}`;
 
   const handleCopy = async () => {

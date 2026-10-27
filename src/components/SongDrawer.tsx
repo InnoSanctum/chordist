@@ -9,6 +9,7 @@ interface SongDrawerProps {
   songs: Song[];
   activeSongId: string;
   isTursoActive: boolean;
+  userEmail: string;
   onClose: () => void;
   onSelectSong: (id: string) => void;
   onCreateSong: () => void;
@@ -24,6 +25,7 @@ export const SongDrawer: React.FC<SongDrawerProps> = ({
   songs,
   activeSongId,
   isTursoActive,
+  userEmail,
   onClose,
   onSelectSong,
   onCreateSong,
@@ -174,11 +176,11 @@ export const SongDrawer: React.FC<SongDrawerProps> = ({
                 onLogout();
                 onClose();
               }}
-              title="Lock / Logout"
-              className="flex items-center gap-1 text-text-secondary hover:text-rose-400 p-1 rounded transition-colors"
+              title={`Log out ${userEmail}`}
+              className="flex items-center gap-1 min-w-0 text-text-secondary hover:text-rose-400 p-1 rounded transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Lock</span>
+              <span className="truncate max-w-[10rem]">{userEmail}</span>
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
             </button>
           </div>
         </div>

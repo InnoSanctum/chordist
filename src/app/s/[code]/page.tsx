@@ -8,6 +8,7 @@ import { Header } from '@/components/Header';
 import { SectionSwitcher } from '@/components/SectionSwitcher';
 import { ChordGrid } from '@/components/ChordGrid';
 import { audioEngine } from '@/lib/audioEngine';
+import { ACTIVE_SONG_KEY, PENDING_FORK_KEY } from '@/lib/storageKeys';
 import { ArrowLeft, GitFork, Check } from 'lucide-react';
 
 export default function SharedSongPage({
@@ -22,22 +23,6 @@ export default function SharedSongPage({
   const [forked, setForked] = useState(false);
 
   useEffect(() => {
-    // Try finding song by code locally or from cloud
-    const saved = localStorage.getItem('chordist_songs_v1');
-    if (saved) {
-      try {
-        const parsed: Song[] = JSON.parse(saved);
-        const match = parsed.find((s) => s.id === code || s.shareCode === code);
-        if (match) {
-          setSong(match);
-          setActiveSectionId(match.sections[0]?.id || '');
-          return;
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
     // Try cloud API
     fetch(`/api/share/${code}`)
       .then((res) => res.json())
@@ -80,18 +65,24 @@ export default function SharedSongPage({
     }
   };
 
-  const handleForkSong = () => {
+  const handleForkSong = async () => {
+    const forkedSong: Song = {
+      ...song,
+      id: `song-${Date.now()}`,
+      title: `${song.title} (Forked)`,
+    };
     try {
-      const saved = localStorage.getItem('chordist_songs_v1');
-      const existing: Song[] = saved ? JSON.parse(saved) : INITIAL_SONGS;
-      const forkedSong: Song = {
-        ...song,
-        id: `song-${Date.now()}`,
-        title: `${song.title} (Forked)`,
-      };
-      existing.unshift(forkedSong);
-      localStorage.setItem('chordist_songs_v1', JSON.stringify(existing));
-      localStorage.setItem('chordist_active_song_id', forkedSong.id);
+      const res = await fetch('/api/songs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(forkedSong),
+      });
+      if (res.status === 401) {
+        // Not logged in yet: the main page saves it right after login / sign-up
+        localStorage.setItem(PENDING_FORK_KEY, JSON.stringify(forkedSong));
+      } else {
+        localStorage.setItem(ACTIVE_SONG_KEY, forkedSong.id);
+      }
       setForked(true);
       setTimeout(() => {
         router.push('/');

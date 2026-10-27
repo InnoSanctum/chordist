@@ -9,19 +9,18 @@ import { ChordLibraryModal } from '../components/ChordLibraryModal';
 import { SettingsModal } from '../components/SettingsModal';
 import { SongDrawer } from '../components/SongDrawer';
 import { ShareModal } from '../components/ShareModal';
-import { LoginModal } from '../components/LoginModal';
+import { LoginModal, SessionUser } from '../components/LoginModal';
 import { ImportSongModal } from '../components/ImportSongModal';
 import { INITIAL_SONGS } from '../lib/defaultSongs';
 import { Song, ChordData, SongSection } from '../types';
 import { audioEngine } from '../lib/audioEngine';
 import { getChordColor } from '../lib/theory';
-import { isAuthenticated, setAuthenticated } from '../lib/auth';
-
-const STORAGE_KEY = 'chordist_songs_v1';
-const ACTIVE_SONG_KEY = 'chordist_active_song_id';
+import { songsCacheKey, ACTIVE_SONG_KEY, PENDING_FORK_KEY } from '../lib/storageKeys';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
-  const [isAuthed, setIsAuthed] = useState<boolean>(true); // start optimistic, check in effect
+  const [user, setUser] = useState<SessionUser | null | undefined>(undefined); // undefined = checking session
+  const [songsLoaded, setSongsLoaded] = useState(false);
   const [songs, setSongs] = useState<Song[]>(INITIAL_SONGS);
   const [activeSongId, setActiveSongId] = useState<string>(INITIAL_SONGS[0].id);
   const [isTursoActive, setIsTursoActive] = useState<boolean>(false);
@@ -37,63 +36,119 @@ export default function Home() {
     index: number;
   } | null>(null);
 
-  // Auth and initial loading
-  useEffect(() => {
-    // Check auth status
-    const authed = isAuthenticated();
-    setIsAuthed(authed);
-
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSongs(parsed);
-        }
-      }
-
-      const savedActiveId = localStorage.getItem(ACTIVE_SONG_KEY);
-      if (savedActiveId) {
-        setActiveSongId(savedActiveId);
-      }
-    } catch {
-      // Fallback
-    }
-
-    // Try fetching from Turso backend
-    fetch('/api/songs')
-      .then((res) => res.json())
+  // Push a song to the server; a 401 means the session expired, so show the login screen
+  const syncSong = useCallback((song: Song) => {
+    return fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(song),
+    })
+      .then((res) => {
+        if (res.status === 401) setUser(null);
+        return res.json();
+      })
       .then((data) => {
-        if (data.status === 'ok' && Array.isArray(data.songs)) {
-          setIsTursoActive(true);
-          if (data.songs.length > 0) {
-            setSongs((prev) => {
-              const songMap = new Map<string, Song>();
-              prev.forEach((s) => songMap.set(s.id, s));
-              data.songs.forEach((s: Song) => songMap.set(s.id, s));
-              const merged = Array.from(songMap.values());
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-              } catch {}
-              return merged;
-            });
+        if (data.status === 'ok') setIsTursoActive(true);
+        return data.status === 'ok';
+      })
+      .catch(() => false);
+  }, []);
+
+  const loadUserSongs = useCallback(
+    async (sessionUser: SessionUser) => {
+      const cacheKey = songsCacheKey(sessionUser.id);
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSongs(parsed);
+            setSongsLoaded(true);
           }
         }
-      })
-      .catch(() => {
-        setIsTursoActive(false);
-      });
-  }, []);
+        const savedActiveId = localStorage.getItem(ACTIVE_SONG_KEY);
+        if (savedActiveId) setActiveSongId(savedActiveId);
+      } catch {
+        // Cache unavailable
+      }
 
-  // Save to localStorage and sync to Turso
-  const saveSongs = useCallback((newSongs: Song[]) => {
-    setSongs(newSongs);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSongs));
-    } catch {
-      // Storage error
-    }
-  }, []);
+      let loaded: Song[] | null = null;
+      try {
+        const res = await fetch('/api/songs');
+        if (res.status === 401) {
+          setUser(null);
+          return;
+        }
+        const data = await res.json();
+        if (data.status === 'ok' && Array.isArray(data.songs) && data.songs.length > 0) {
+          loaded = data.songs as Song[];
+          setIsTursoActive(Boolean(data.cloud));
+        }
+      } catch {
+        setIsTursoActive(false); // offline: keep using the cache
+      }
+
+      // Song saved from a share link before logging in
+      try {
+        const pending = localStorage.getItem(PENDING_FORK_KEY);
+        if (pending && loaded) {
+          const forked: Song = JSON.parse(pending);
+          if (await syncSong(forked)) {
+            loaded = [forked, ...loaded];
+            setActiveSongId(forked.id);
+            localStorage.setItem(ACTIVE_SONG_KEY, forked.id);
+          }
+          localStorage.removeItem(PENDING_FORK_KEY);
+        }
+      } catch {
+        // Ignore a malformed pending fork
+      }
+
+      if (loaded) {
+        setSongs(loaded);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(loaded));
+        } catch {}
+      }
+      setSongsLoaded(true);
+    },
+    [syncSong]
+  );
+
+  // Check for an existing session on startup
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setUser(data.user);
+          loadUserSongs(data.user);
+        } else {
+          setUser(null);
+        }
+      })
+      .catch(() => setUser(null));
+  }, [loadUserSongs]);
+
+  const handleLoginSuccess = (sessionUser: SessionUser) => {
+    setUser(sessionUser);
+    setSongsLoaded(false);
+    loadUserSongs(sessionUser);
+  };
+
+  // Save to localStorage cache (callers sync to the server)
+  const saveSongs = useCallback(
+    (newSongs: Song[]) => {
+      setSongs(newSongs);
+      if (!user) return;
+      try {
+        localStorage.setItem(songsCacheKey(user.id), JSON.stringify(newSongs));
+      } catch {
+        // Storage error
+      }
+    },
+    [user]
+  );
 
   const currentSong = songs.find((s) => s.id === activeSongId) || songs[0];
 
@@ -129,16 +184,7 @@ export default function Home() {
 
     // Sync to Turso in background
     const updatedSong = { ...currentSong, ...fields };
-    fetch('/api/songs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedSong),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === 'ok') setIsTursoActive(true);
-      })
-      .catch(() => {});
+    syncSong(updatedSong);
   };
 
   // Section actions
@@ -284,16 +330,7 @@ export default function Home() {
     setActiveSongId(newSong.id);
 
     // Sync to Turso
-    fetch('/api/songs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSong),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === 'ok') setIsTursoActive(true);
-      })
-      .catch(() => {});
+    syncSong(newSong);
   };
 
   // Import song from lyrics & chords parser
@@ -303,16 +340,7 @@ export default function Home() {
     setActiveSongId(newSong.id);
 
     // Sync to Turso
-    fetch('/api/songs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSong),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === 'ok') setIsTursoActive(true);
-      })
-      .catch(() => {});
+    syncSong(newSong);
   };
 
   const handleDuplicateSong = (sourceSong: Song) => {
@@ -325,16 +353,7 @@ export default function Home() {
     saveSongs(newSongs);
     setActiveSongId(duplicated.id);
 
-    fetch('/api/songs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(duplicated),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === 'ok') setIsTursoActive(true);
-      })
-      .catch(() => {});
+    syncSong(duplicated);
   };
 
   const handleDeleteSong = (id: string) => {
@@ -345,13 +364,36 @@ export default function Home() {
 
     fetch(`/api/songs?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }).catch(() => {});
+    })
+      .then((res) => {
+        if (res.status === 401) setUser(null);
+      })
+      .catch(() => {});
   };
 
   const handleLogout = () => {
-    setAuthenticated(false);
-    setIsAuthed(false);
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setUser(null);
+    setSongsLoaded(false);
+    setSongs(INITIAL_SONGS);
+    setIsTursoActive(false);
   };
+
+  if (user === undefined || (user && !songsLoaded)) {
+    return (
+      <div className="flex flex-1 min-h-screen items-center justify-center bg-bg-app text-text-secondary">
+        <Loader2 className="w-6 h-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (user === null) {
+    return (
+      <div className="min-h-screen bg-bg-app">
+        <LoginModal isOpen onSuccess={handleLoginSuccess} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-bg-app select-none">
@@ -384,14 +426,6 @@ export default function Home() {
           onEditChord={handleEditChord}
         />
       </main>
-
-      {/* Login Gate Modal */}
-      {!isAuthed && (
-        <LoginModal
-          isOpen={!isAuthed}
-          onSuccess={() => setIsAuthed(true)}
-        />
-      )}
 
       {/* Modals & Dialogs */}
       {editingChordState && (
@@ -442,6 +476,7 @@ export default function Home() {
         songs={songs}
         activeSongId={currentSong.id}
         isTursoActive={isTursoActive}
+        userEmail={user.email}
         onClose={() => setIsDrawerOpen(false)}
         onSelectSong={handleSelectSong}
         onCreateSong={handleCreateSong}

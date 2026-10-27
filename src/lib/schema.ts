@@ -26,3 +26,17 @@ export const sharedSongsTable = sqliteTable('shared_songs', {
   viewsCount: integer('views_count').default(0),
   createdAt: text('created_at').notNull(),
 });
+
+export const usersTable = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const sessionsTable = sqliteTable('sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  userId: text('user_id').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull(),
+});

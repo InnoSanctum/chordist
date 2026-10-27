@@ -67,6 +67,27 @@ export async function ensureSchema(): Promise<void> {
       );
     `);
 
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_songs_creator ON songs (creator_id);`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);`);
+
     schemaInitialized = true;
   } catch (err) {
     console.error('Failed to initialize database schema in Turso:', err);

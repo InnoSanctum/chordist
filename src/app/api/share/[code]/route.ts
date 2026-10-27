@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server';
-import { db, isTursoConfigured, ensureSchema } from '@/lib/db';
-import { sharedSongsTable } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { db, ensureSchema } from '@/lib/db';
+import { sharedSongsTable, songsTable } from '@/lib/schema';
+import { and, eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
   const { code } = await params;
-
-  if (!isTursoConfigured()) {
-    return NextResponse.json({ error: 'Database not configured' }, { status: 404 });
-  }
 
   await ensureSchema();
 
@@ -40,23 +37,35 @@ export async function POST(
 ) {
   const { code } = await params;
 
-  if (!isTursoConfigured()) {
-    return NextResponse.json({ status: 'mock_shared', code });
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
   }
-
-  await ensureSchema();
 
   try {
     const body = await req.json();
-    const now = new Date().toISOString();
 
-    await db.insert(sharedSongsTable).values({
-      shareCode: code,
-      songId: body.id,
-      songDataJson: JSON.stringify(body),
-      viewsCount: 0,
-      createdAt: now,
-    });
+    // Only the song's owner may publish (or refresh) its share snapshot
+    const owned = await db
+      .select({ id: songsTable.id })
+      .from(songsTable)
+      .where(and(eq(songsTable.id, body.id), eq(songsTable.creatorId, user.id)))
+      .limit(1);
+    if (owned.length === 0 || code !== body.id) {
+      return NextResponse.json({ error: 'You can only share your own songs' }, { status: 403 });
+    }
+
+    const songDataJson = JSON.stringify(body);
+    await db
+      .insert(sharedSongsTable)
+      .values({
+        shareCode: code,
+        songId: body.id,
+        songDataJson,
+        viewsCount: 0,
+        createdAt: new Date().toISOString(),
+      })
+      .onConflictDoUpdate({ target: sharedSongsTable.shareCode, set: { songDataJson } });
 
     return NextResponse.json({ status: 'ok', code });
   } catch (error) {

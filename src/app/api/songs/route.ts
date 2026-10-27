@@ -1,50 +1,55 @@
 import { NextResponse } from 'next/server';
-import { db, isTursoConfigured, ensureSchema } from '@/lib/db';
+import { db, isTursoConfigured } from '@/lib/db';
 import { songsTable } from '@/lib/schema';
 import { INITIAL_SONGS } from '@/lib/defaultSongs';
-import { eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { and, eq } from 'drizzle-orm';
+
+const unauthorized = () => NextResponse.json({ error: 'Not logged in' }, { status: 401 });
+
+function toSongRow(song: any, creatorId: string, now: string) {
+  return {
+    id: song.id,
+    creatorId,
+    title: song.title || 'Untitled',
+    artist: song.artist || '',
+    bpm: song.bpm || 100,
+    keySignature: song.keySignature || 'C Major',
+    instrument: song.instrument || 'acoustic_guitar',
+    padCount: song.padCount || 15,
+    playbackStyle: song.playbackStyle || 'strum_down',
+    strumSpeedMs: song.strumSpeedMs ?? 25,
+    fadeDuration: song.fadeDuration || 2.5,
+    sectionsJson: JSON.stringify(song.sections || []),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 export async function GET() {
-  if (!isTursoConfigured()) {
-    return NextResponse.json({ status: 'local_mode', songs: [] });
-  }
-
-  await ensureSchema();
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
 
   try {
-    let songs = await db.select().from(songsTable);
+    let songs = await db.select().from(songsTable).where(eq(songsTable.creatorId, user.id));
 
-    // If database is brand new and empty, seed default songs
+    // New account (or everything deleted): give the user their own copy of the starter songs
     if (songs.length === 0) {
       const now = new Date().toISOString();
+      const suffix = user.id.slice(0, 8);
       for (const song of INITIAL_SONGS) {
         await db
           .insert(songsTable)
-          .values({
-            id: song.id,
-            creatorId: 'system_default',
-            title: song.title,
-            artist: song.artist || '',
-            bpm: song.bpm || 100,
-            keySignature: song.keySignature || 'C Major',
-            instrument: song.instrument || 'acoustic_guitar',
-            padCount: song.padCount || 15,
-            playbackStyle: song.playbackStyle || 'strum_down',
-            strumSpeedMs: song.strumSpeedMs || 25,
-            fadeDuration: song.fadeDuration || 2.5,
-            sectionsJson: JSON.stringify(song.sections || []),
-            createdAt: now,
-            updatedAt: now,
-          })
-          .catch(() => {});
+          .values(toSongRow({ ...song, id: `${song.id}-${suffix}` }, user.id, now))
+          .onConflictDoNothing();
       }
-      songs = await db.select().from(songsTable);
+      songs = await db.select().from(songsTable).where(eq(songsTable.creatorId, user.id));
     }
 
-    const parsed = songs.map((s) => {
+    const parsed = songs.map(({ creatorId, sectionsJson, ...s }) => {
       let sections = [];
       try {
-        sections = JSON.parse(s.sectionsJson);
+        sections = JSON.parse(sectionsJson);
       } catch {
         sections = [];
       }
@@ -55,74 +60,51 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ status: 'ok', songs: parsed });
+    return NextResponse.json({ status: 'ok', cloud: isTursoConfigured(), songs: parsed });
   } catch (error) {
-    console.error('Error fetching songs from Turso:', error);
+    console.error('Error fetching songs:', error);
     return NextResponse.json({ error: 'Failed to fetch songs', details: String(error) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
-  if (!isTursoConfigured()) {
-    return NextResponse.json({ status: 'local_saved' });
-  }
-
-  await ensureSchema();
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
 
   try {
     const body = await req.json();
-    const { id, title, artist, bpm, keySignature, instrument, padCount, playbackStyle, strumSpeedMs, fadeDuration, sections } = body;
+    if (!body?.id || typeof body.id !== 'string') {
+      return NextResponse.json({ error: 'Missing song id' }, { status: 400 });
+    }
+
+    // Song ids are generated client-side, so refuse to overwrite someone else's song
+    const existing = await db
+      .select({ creatorId: songsTable.creatorId })
+      .from(songsTable)
+      .where(eq(songsTable.id, body.id))
+      .limit(1);
+    if (existing[0] && existing[0].creatorId !== user.id) {
+      return NextResponse.json({ error: 'Song belongs to another user' }, { status: 403 });
+    }
 
     const now = new Date().toISOString();
+    const { id, creatorId, createdAt, ...updatable } = toSongRow(body, user.id, now);
 
     await db
       .insert(songsTable)
-      .values({
-        id,
-        creatorId: 'user_anonymous',
-        title,
-        artist: artist || '',
-        bpm: bpm || 100,
-        keySignature: keySignature || 'C Major',
-        instrument: instrument || 'acoustic_guitar',
-        padCount: padCount || 15,
-        playbackStyle: playbackStyle || 'strum_down',
-        strumSpeedMs: strumSpeedMs || 25,
-        fadeDuration: fadeDuration || 2.5,
-        sectionsJson: JSON.stringify(sections || []),
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: songsTable.id,
-        set: {
-          title,
-          artist: artist || '',
-          bpm: bpm || 100,
-          keySignature: keySignature || 'C Major',
-          instrument: instrument || 'acoustic_guitar',
-          padCount: padCount || 15,
-          playbackStyle: playbackStyle || 'strum_down',
-          strumSpeedMs: strumSpeedMs || 25,
-          fadeDuration: fadeDuration || 2.5,
-          sectionsJson: JSON.stringify(sections || []),
-          updatedAt: now,
-        },
-      });
+      .values({ id, creatorId, createdAt, ...updatable })
+      .onConflictDoUpdate({ target: songsTable.id, set: updatable });
 
     return NextResponse.json({ status: 'ok', id });
   } catch (error) {
-    console.error('Error saving song to Turso:', error);
+    console.error('Error saving song:', error);
     return NextResponse.json({ error: 'Failed to save song', details: String(error) }, { status: 500 });
   }
 }
 
 export async function DELETE(req: Request) {
-  if (!isTursoConfigured()) {
-    return NextResponse.json({ status: 'local_deleted' });
-  }
-
-  await ensureSchema();
+  const user = await getCurrentUser();
+  if (!user) return unauthorized();
 
   try {
     const { searchParams } = new URL(req.url);
@@ -131,10 +113,10 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Missing song id' }, { status: 400 });
     }
 
-    await db.delete(songsTable).where(eq(songsTable.id, id));
+    await db.delete(songsTable).where(and(eq(songsTable.id, id), eq(songsTable.creatorId, user.id)));
     return NextResponse.json({ status: 'ok', id });
   } catch (error) {
-    console.error('Error deleting song from Turso:', error);
+    console.error('Error deleting song:', error);
     return NextResponse.json({ error: 'Failed to delete song', details: String(error) }, { status: 500 });
   }
 }
