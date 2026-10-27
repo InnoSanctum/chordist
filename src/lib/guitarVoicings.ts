@@ -68,14 +68,49 @@ export const STANDARD_GUITAR_VOICINGS: Record<string, (number | null)[]> = {
   // Bb / A#
   'Bb': [1, 3, 3, 3, 1, null],
   'Bbm': [1, 2, 3, 3, 1, null],
+  'Bb7': [1, 3, 1, 3, 1, null],
+  'Bbmaj7': [1, 3, 2, 3, 1, null],
 
   // Eb / D#
   'Eb': [3, 4, 3, 5, 6, null],
   'Ebmaj7': [3, 3, 3, 5, 6, null],
+  'Eb7': [3, 2, 3, 1, null, null],
 
   // Ab / G#
   'Ab': [4, 4, 5, 6, 6, 4],
   'Abadd9': [4, 4, 3, null, null, 4],
+
+  // Common Diminished & Half-Diminished
+  'Cdim': [null, 4, 5, 4, 3, null],
+  'Cdim7': [2, 4, 2, 4, 3, null],
+  'Cm7b5': [null, 4, 3, 4, 3, null],
+  'Ddim': [1, 3, 1, 0, null, null],
+  'Edim': [0, 2, 0, 2, 1, 0],
+  'Edim7': [0, 2, 0, 2, 1, 0],
+  'F#dim7': [2, 1, 2, 1, null, 2],
+  'G#dim7': [4, 3, 4, 3, null, 4],
+  'Adim7': [null, 1, 2, 1, 0, null],
+  'Am7b5': [null, 1, 2, 1, 0, null],
+
+  // Extended & Altered 9ths, 13ths, Add9
+  'C9': [3, 3, 3, 2, 3, null],
+  'Cmaj9': [0, 3, 4, 2, 3, null],
+  'Cm9': [3, 3, 3, 1, 3, null],
+  'G9': [2, 0, 2, 0, null, 3],
+  'G13': [0, 0, 0, 3, null, 3],
+  'C13': [5, 3, 3, 2, 3, null],
+  'A9': [0, 0, 0, 2, 0, null],
+  'A13': [2, 2, 0, 2, 0, null],
+  'E9': [2, 0, 1, 0, 2, 0],
+  'E13': [0, 2, 1, 0, 2, 0],
+  'D9': [0, 1, 2, 0, null, null],
+  'Dadd9': [0, 3, 2, 0, null, null],
+  'Aadd9': [0, 0, 2, 2, 0, null],
+  'Eadd9': [2, 0, 1, 2, 2, 0],
+  'Fadd9': [3, 1, 2, 3, null, null],
+  'Asus2': [0, 0, 2, 2, 0, null],
+  'Dsus2': [0, 3, 2, 0, null, null],
+  'Esus4': [0, 0, 2, 2, 2, 0],
 };
 
 /**

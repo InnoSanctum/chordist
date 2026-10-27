@@ -224,12 +224,23 @@ export default function Home() {
     handleUpdateCurrentSong({ sections: updatedSections });
   };
 
-  // Apply dictionary chord to editing pad
-  const handleApplyDictionaryChord = (chord: ChordData) => {
-    if (editingChordState) {
-      handleSaveChord(chord, editingChordState.index);
-      setEditingChordState(null);
+  // Apply dictionary chord to target pad or editing pad
+  const handleApplyDictionaryChord = (chord: ChordData, targetIndex?: number) => {
+    let indexToUse = 0;
+    if (targetIndex !== undefined && targetIndex !== null) {
+      indexToUse = targetIndex;
+    } else if (editingChordState) {
+      indexToUse = editingChordState.index;
+    } else {
+      // Find the first Empty pad in active section
+      const emptyIdx = activeSection.chords.findIndex((c) => c.label === 'Empty');
+      if (emptyIdx !== -1) {
+        indexToUse = emptyIdx;
+      }
     }
+
+    handleSaveChord(chord, indexToUse);
+    setEditingChordState(null);
   };
 
   // Song Drawer actions
@@ -412,6 +423,8 @@ export default function Home() {
         playbackStyle={currentSong.playbackStyle}
         strumSpeedMs={currentSong.strumSpeedMs}
         fadeDuration={currentSong.fadeDuration}
+        padCount={currentSong.padCount}
+        targetPadIndex={editingChordState?.index}
         onClose={() => setIsLibraryOpen(false)}
         onImportProgression={handleImportProgression}
         onSelectDictionaryChord={handleApplyDictionaryChord}
