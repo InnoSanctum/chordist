@@ -70,7 +70,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
             {isRegister ? <UserPlus className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <h2 className="text-lg font-bold text-text-primary">
-            {isRegister ? 'Create Account' : 'Welcome to Chordist'}
+            {isRegister ? 'Create Account' : 'Welcome to Chordister'}
           </h2>
           <p className="text-xs text-text-secondary leading-relaxed">
             {isRegister

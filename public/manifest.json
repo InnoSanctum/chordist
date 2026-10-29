@@ -1,6 +1,6 @@
 {
-  "name": "Chordist - Musical Chord Pad & Song Manager",
-  "short_name": "Chordist",
+  "name": "Chordister - Musical Chord Pad & Song Manager",
+  "short_name": "Chordister",
   "description": "Multi-platform musical chord pad player and song manager for phones, tablets and desktop.",
   "start_url": "/",
   "display": "standalone",

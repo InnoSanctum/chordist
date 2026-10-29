@@ -1,4 +1,4 @@
-# Chordist 🎵
+# Chordister 🎵
 > Multi-platform musical chord pad player and song manager for Android phones, tablets, and desktop PC. Built with Next.js 15, Tailwind CSS, Turso (libSQL), Web Audio API, and PWA capabilities.
 
 ---

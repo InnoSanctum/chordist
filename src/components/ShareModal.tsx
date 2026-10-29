@@ -44,8 +44,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ song, isOpen, onClose })
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
-          title: `Chordist - ${song.title}`,
-          text: `Check out the chord progression for "${song.title}" on Chordist!`,
+          title: `Chordister - ${song.title}`,
+          text: `Check out the chord progression for "${song.title}" on Chordister!`,
           url: shareUrl,
         });
       } catch {

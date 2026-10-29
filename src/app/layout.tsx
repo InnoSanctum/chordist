@@ -2,15 +2,17 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Chordist - Musical Chord Pad & Song Manager',
+  title: 'Chordister - Musical Chord Pad & Song Manager',
   description: 'Interactive musical chord pad and song manager with acoustic guitar & piano sound synthesis. Built for Android, tablets, and PC.',
+  applicationName: 'Chordister',
+  appleWebApp: { capable: true, title: 'Chordister', statusBarStyle: 'black' },
   manifest: '/manifest.json',
   icons: {
     icon: '/icon.svg',
     apple: '/icon.svg',
   },
   openGraph: {
-    title: 'Chordist - Musical Chord Pad & Song Manager',
+    title: 'Chordister - Musical Chord Pad & Song Manager',
     description: 'Play, customize, and share chord progressions with realistic acoustic guitar & grand piano sounds.',
     type: 'website',
   },
