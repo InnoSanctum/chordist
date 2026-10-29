@@ -61,6 +61,7 @@ export default function SharedSongPage({
         playbackStyle: song.playbackStyle,
         strumSpeedMs: song.strumSpeedMs,
         fadeDuration: song.fadeDuration,
+        sustain: song.sustain,
       });
     }
   };

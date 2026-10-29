@@ -20,6 +20,7 @@ function toSongRow(song: any, creatorId: string, now: string) {
     playbackStyle: song.playbackStyle || 'strum_down',
     strumSpeedMs: song.strumSpeedMs ?? 25,
     fadeDuration: song.fadeDuration || 2.5,
+    sustain: Math.min(5, Math.max(0, Number(song.sustain) || 0)),
     sectionsJson: JSON.stringify(song.sections || []),
     sourceText: typeof song.sourceText === 'string' ? song.sourceText : null,
     createdAt: now,

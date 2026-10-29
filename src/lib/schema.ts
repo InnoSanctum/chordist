@@ -12,6 +12,7 @@ export const songsTable = sqliteTable('songs', {
   playbackStyle: text('playback_style').default('strum_down'),
   strumSpeedMs: integer('strum_speed_ms').default(25),
   fadeDuration: real('fade_duration').default(2.5),
+  sustain: real('sustain').default(0),
   isPublic: integer('is_public', { mode: 'boolean' }).default(false),
   shareCode: text('share_code'),
   sectionsJson: text('sections_json').notNull(), // JSON stringified sections & chords

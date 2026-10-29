@@ -30,6 +30,7 @@ export interface Song {
   playbackStyle: PlaybackStyle;
   strumSpeedMs: number; // 0 - 50ms
   fadeDuration: number; // 0.5s - 6.0s
+  sustain?: number; // sustain pedal ring time, 0 (off) - 5s
   sections: SongSection[];
   activeSectionId: string;
   sourceText?: string; // raw chord sheet / lyrics the song was imported from

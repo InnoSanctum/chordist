@@ -90,6 +90,9 @@ export async function ensureSchema(): Promise<void> {
     if (!songColumns.includes('source_text')) {
       await client.execute(`ALTER TABLE songs ADD COLUMN source_text TEXT`);
     }
+    if (!songColumns.includes('sustain')) {
+      await client.execute(`ALTER TABLE songs ADD COLUMN sustain REAL DEFAULT 0`);
+    }
 
     await client.execute(`CREATE INDEX IF NOT EXISTS idx_songs_creator ON songs (creator_id);`);
     await client.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);`);

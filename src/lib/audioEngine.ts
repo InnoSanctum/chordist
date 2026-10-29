@@ -6,7 +6,7 @@ class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private limiter: DynamicsCompressorNode | null = null;
-  private guitarBufferCache = new Map<number, AudioBuffer>();
+  private guitarBufferCache = new Map<string, AudioBuffer>(); // key: midi:sustain
 
   constructor() {
     // AudioContext will be initialized on first user gesture
@@ -62,6 +62,7 @@ class SoundEngine {
       playbackStyle: PlaybackStyle;
       strumSpeedMs: number;
       fadeDuration: number;
+      sustain?: number; // sustain pedal: extra ring time in seconds (0 = off)
     }
   ) {
     if (!notes || notes.length === 0) return;
@@ -79,6 +80,7 @@ class SoundEngine {
     }
 
     const { instrument, playbackStyle, strumSpeedMs, fadeDuration } = options;
+    const sustain = Math.min(5, Math.max(0, options.sustain ?? 0));
 
     // Convert notes to MIDI and sort
     const sortedNotes = [...notes]
@@ -103,7 +105,7 @@ class SoundEngine {
       }
 
       const noteTime = now + delay;
-      this.playNote(item.midi, instrument, noteTime, fadeDuration);
+      this.playNote(item.midi, instrument, noteTime, fadeDuration, sustain);
     });
   }
 
@@ -114,28 +116,30 @@ class SoundEngine {
     midi: number,
     instrument: InstrumentType,
     startTime: number,
-    fadeDuration: number
+    fadeDuration: number,
+    sustain = 0
   ) {
     if (!this.ctx || !this.masterGain) return;
 
     const freq = midiToFrequency(midi);
-    const duration = Math.max(0.5, fadeDuration);
+    // Sustain pedal: the note rings for `sustain` extra seconds before the normal fade-out
+    const duration = Math.max(0.5, fadeDuration) + sustain;
 
     switch (instrument) {
       case 'acoustic_guitar':
-        this.playAcousticGuitar(freq, midi, startTime, duration);
+        this.playAcousticGuitar(freq, midi, startTime, duration, sustain);
         break;
       case 'grand_piano':
-        this.playGrandPiano(freq, midi, startTime, duration);
+        this.playGrandPiano(freq, midi, startTime, duration, sustain);
         break;
       case 'rhodes':
-        this.playRhodes(freq, midi, startTime, duration);
+        this.playRhodes(freq, midi, startTime, duration, sustain);
         break;
       case 'synth_pad':
-        this.playSynthPad(freq, midi, startTime, duration);
+        this.playSynthPad(freq, midi, startTime, duration, sustain);
         break;
       default:
-        this.playGrandPiano(freq, midi, startTime, duration);
+        this.playGrandPiano(freq, midi, startTime, duration, sustain);
     }
   }
 
@@ -144,14 +148,15 @@ class SoundEngine {
    * Pre-calculated into an AudioBuffer with pick-position comb filtering,
    * smoothed excitation, and wood body bloom.
    */
-  private getGuitarBuffer(freq: number, midi: number): AudioBuffer {
-    if (this.guitarBufferCache.has(midi) && this.ctx) {
-      return this.guitarBufferCache.get(midi)!;
+  private getGuitarBuffer(freq: number, midi: number, sustain = 0): AudioBuffer {
+    const cacheKey = `${midi}:${sustain}`;
+    if (this.guitarBufferCache.has(cacheKey) && this.ctx) {
+      return this.guitarBufferCache.get(cacheKey)!;
     }
 
     const sampleRate = this.ctx ? this.ctx.sampleRate : 44100;
     const period = Math.max(2, Math.round(sampleRate / freq));
-    const bufferDuration = 3.5;
+    const bufferDuration = 3.5 + sustain;
     const bufferLength = Math.floor(sampleRate * bufferDuration);
     const buffer = this.ctx!.createBuffer(1, bufferLength, sampleRate);
     const data = buffer.getChannelData(0);
@@ -181,7 +186,9 @@ class SoundEngine {
 
     // 2. Karplus-Strong string algorithm with dynamic damping
     // Lower strings sustain longer with rich resonance, high strings decay naturally
-    const loss = Math.min(0.997, Math.max(0.986, 1 - 0.0022 * Math.log2(Math.max(60, freq) / 75)));
+    const baseLoss = Math.min(0.997, Math.max(0.986, 1 - 0.0022 * Math.log2(Math.max(60, freq) / 75)));
+    // Sustain stretches the string's natural decay (up to ~4x slower at 5 s) so it doesn't die under the envelope
+    const loss = Math.pow(baseLoss, 1 / (1 + sustain * 0.6));
     const S = 0.52; // gentle lowpass filter coefficient
 
     for (let i = period; i < bufferLength; i++) {
@@ -190,7 +197,7 @@ class SoundEngine {
       data[i] = (S * prev1 + (1 - S) * prev2) * loss;
     }
 
-    this.guitarBufferCache.set(midi, buffer);
+    this.guitarBufferCache.set(cacheKey, buffer);
     return buffer;
   }
 
@@ -198,10 +205,10 @@ class SoundEngine {
    * High-quality Clean Acoustic Guitar:
    * Plucked string AudioBuffer + acoustic dreadnought soundhole & wood soundboard resonances + stereo spread
    */
-  private playAcousticGuitar(freq: number, midi: number, startTime: number, duration: number) {
+  private playAcousticGuitar(freq: number, midi: number, startTime: number, duration: number, sustain: number) {
     if (!this.ctx || !this.masterGain) return;
 
-    const buffer = this.getGuitarBuffer(freq, midi);
+    const buffer = this.getGuitarBuffer(freq, midi, sustain);
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
 
@@ -233,7 +240,8 @@ class SoundEngine {
     // Volume Envelope
     const noteGain = this.ctx.createGain();
     noteGain.gain.setValueAtTime(0.85, startTime);
-    // Smooth exponential fade-out
+    // Let ring: hold the level while the pedal is down, then the smooth exponential fade-out
+    if (sustain > 0) noteGain.gain.linearRampToValueAtTime(0.7, startTime + sustain);
     noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     // Stereo panning based on string pitch (low notes left, high notes right)
@@ -278,7 +286,7 @@ class SoundEngine {
   /**
    * Acoustic Grand Piano with multi-harmonic hammer transient and sustained resonance
    */
-  private playGrandPiano(freq: number, midi: number, startTime: number, duration: number) {
+  private playGrandPiano(freq: number, midi: number, startTime: number, duration: number, sustain: number) {
     if (!this.ctx || !this.masterGain) return;
 
     // 4 harmonic partials for rich grand piano tone
@@ -294,8 +302,10 @@ class SoundEngine {
     // Instant hammer attack (3ms)
     noteGain.gain.linearRampToValueAtTime(0.6, startTime + 0.003);
     // Natural acoustic two-stage decay
-    const halfTime = startTime + Math.min(0.8, duration * 0.4);
+    const halfTime = startTime + Math.min(0.8, (duration - sustain) * 0.4); // based on the fade alone
     noteGain.gain.exponentialRampToValueAtTime(0.2, halfTime);
+    // Sustain pedal: strings keep ringing with only a slow natural decay
+    if (sustain > 0) noteGain.gain.exponentialRampToValueAtTime(0.12, halfTime + sustain);
     noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     // Piano soundboard filter
@@ -351,7 +361,7 @@ class SoundEngine {
   /**
    * Electric Piano (Rhodes style bell tone FM synthesis)
    */
-  private playRhodes(freq: number, midi: number, startTime: number, duration: number) {
+  private playRhodes(freq: number, midi: number, startTime: number, duration: number, sustain: number) {
     if (!this.ctx || !this.masterGain) return;
 
     // Carrier
@@ -374,6 +384,7 @@ class SoundEngine {
     const noteGain = this.ctx.createGain();
     noteGain.gain.setValueAtTime(0.001, startTime);
     noteGain.gain.linearRampToValueAtTime(0.5, startTime + 0.005);
+    if (sustain > 0) noteGain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.005 + sustain);
     noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     carrier.connect(noteGain);
@@ -388,7 +399,7 @@ class SoundEngine {
   /**
    * Ambient Warm Synth Pad
    */
-  private playSynthPad(freq: number, midi: number, startTime: number, duration: number) {
+  private playSynthPad(freq: number, midi: number, startTime: number, duration: number, sustain: number) {
     if (!this.ctx || !this.masterGain) return;
 
     const osc1 = this.ctx.createOscillator();
@@ -409,6 +420,7 @@ class SoundEngine {
     // Soft pad attack (120ms)
     noteGain.gain.setValueAtTime(0.001, startTime);
     noteGain.gain.linearRampToValueAtTime(0.4, startTime + 0.12);
+    if (sustain > 0) noteGain.gain.linearRampToValueAtTime(0.35, startTime + 0.12 + sustain);
     noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
     osc1.connect(filter);

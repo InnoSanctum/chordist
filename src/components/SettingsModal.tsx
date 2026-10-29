@@ -27,6 +27,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         playbackStyle: song.playbackStyle,
         strumSpeedMs: song.strumSpeedMs,
         fadeDuration: song.fadeDuration,
+        sustain: song.sustain,
       });
     }
   };
@@ -187,6 +188,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 step="0.5"
                 value={song.fadeDuration}
                 onChange={(e) => onUpdateSong({ fadeDuration: parseFloat(e.target.value) })}
+                className="w-full accent-accent-primary cursor-pointer"
+              />
+            </div>
+
+            {/* Sustain Pedal Slider */}
+            <div>
+              <div className="flex justify-between text-xs text-text-secondary mb-1">
+                <span>Sustain Pedal (let chords ring)</span>
+                <span className="font-mono text-text-primary">
+                  {(song.sustain ?? 0) > 0 ? `${(song.sustain ?? 0).toFixed(2)} s` : 'Off'}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="5"
+                step="0.25"
+                value={song.sustain ?? 0}
+                onChange={(e) => onUpdateSong({ sustain: parseFloat(e.target.value) })}
                 className="w-full accent-accent-primary cursor-pointer"
               />
             </div>

@@ -177,6 +177,7 @@ export default function Home() {
           playbackStyle: currentSong.playbackStyle,
           strumSpeedMs: currentSong.strumSpeedMs,
           fadeDuration: currentSong.fadeDuration,
+          sustain: currentSong.sustain,
         });
       }
     },
@@ -597,6 +598,7 @@ export default function Home() {
           playbackStyle={currentSong.playbackStyle}
           strumSpeedMs={currentSong.strumSpeedMs}
           fadeDuration={currentSong.fadeDuration}
+          sustain={currentSong.sustain}
           isOpen={Boolean(editingChordState)}
           onClose={() => setEditingChordState(null)}
           onSave={handleSaveChord}

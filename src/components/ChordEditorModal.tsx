@@ -37,6 +37,7 @@ interface ChordEditorModalProps {
   playbackStyle: PlaybackStyle;
   strumSpeedMs: number;
   fadeDuration: number;
+  sustain?: number;
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedChord: ChordData, index: number) => void;
@@ -51,6 +52,7 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
   playbackStyle,
   strumSpeedMs,
   fadeDuration,
+  sustain,
   isOpen,
   onClose,
   onSave,
@@ -161,6 +163,7 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
         playbackStyle,
         strumSpeedMs,
         fadeDuration,
+        sustain,
       });
     }
   };
@@ -181,6 +184,7 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
         playbackStyle,
         strumSpeedMs,
         fadeDuration,
+        sustain,
       });
     }
   };
@@ -205,6 +209,7 @@ export const ChordEditorModal: React.FC<ChordEditorModalProps> = ({
           playbackStyle,
           strumSpeedMs,
           fadeDuration,
+          sustain,
         });
       }
       setQuickSearchQuery('');
